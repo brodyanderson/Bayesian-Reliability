@@ -1,0 +1,542 @@
+---
+title: "STAT 466 HW 9"
+author: "Brody Anderson"
+date: "2024-03-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(R2jags)
+library(coda)
+set.seed(1234)
+```
+
+## Question 1
+
+I read all of Chapter 7.
+
+
+
+## Question 2
+
+```{r Q2}
+logit <- function(x) {log(x/(1-x))}
+ilogit <- function(x) {1/(1+exp(-x))}
+
+afw.data <- read.csv('Table10-8.csv')
+#head(afw.data)
+names(afw.data) <- c('Plant', 'failures', 'n')
+#head(afw.data)
+
+failures <- afw.data$failures
+n <- afw.data$n
+
+AFWModel <- "model {
+  for(i in 1:68){
+    failures[i] ~ dbin(p[i], n[i])
+    p[i] ~ dbeta(alpha, beta)
+  }
+  alpha ~ dbeta(1,1)
+  beta ~ dbeta(1,1)
+}
+"
+
+AFWModel.sim <- jags(
+  data=c('failures', 'n'),
+  parameters.to.save=c('p', 'beta', 'alpha'),
+  model.file=textConnection(AFWModel),
+  n.iter=12000,
+  n.burnin=2000,
+  n.chains=5,
+  n.thin=2
+) 
+
+#head(AFWModel.sim$BUGSoutput$sims.matrix)
+chains <- AFWModel.sim$BUGSoutput$sims.matrix[,c('p[1]', 'p[44]', 'deviance')]
+#head(chains)
+chains <- as.mcmc(chains)
+
+p1 <- AFWModel.sim$BUGSoutput$sims.matrix[,2]
+p43 <- AFWModel.sim$BUGSoutput$sims.matrix[,44]
+
+plot(p1,type='l')
+plot(p43,type='l')
+
+#acf(p1)
+#acf(p2)
+
+effectiveSize(chains)
+gelman.diag(AFWModel.sim$BUGSoutput)
+
+AFWModel.sim$BUGSoutput$DIC
+
+mcmcChains <- AFWModel.sim$BUGSoutput$sims.matrix[,2:69]
+
+quantile(p1,c(0.025,0.975))
+quantile(p43,c(0.025,0.975))
+
+GoF <- matrix(NA,ncol=length(failures),nrow=length(mcmcChains[,1]))
+for (i in 1:length(mcmcChains[,1])) {
+  GoF[i,] <- runif(length(failures),pbinom(failures-1, 68, mcmcChains[i,]),pbinom(failures, 68,mcmcChains[i,]))
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+# Calculating the p-values for each posterior model
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+#hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+mean(GoF_Summary < 0.05)
+
+
+####### 
+
+AFWModel2 <- "model {
+  for(i in 1:68){
+    failures[i] ~ dbin(pi, n[i])
+    
+  }
+  pi ~ dbeta(1,1)
+}
+"
+
+AFWModel2.sim <- jags(
+  data=c('failures', 'n'),
+  parameters.to.save=c('pi'),
+  model.file=textConnection(AFWModel2),
+  n.iter=12000,
+  n.burnin=2000,
+  n.chains=5,
+  n.thin=2
+) 
+
+#head(AFWModel2.sim$BUGSoutput$sims.matrix)
+plot(AFWModel2.sim$BUGSoutput$sims.matrix[,2],type='l')
+
+effectiveSize(AFWModel2.sim$BUGSoutput$sims.matrix)
+
+AFWModel2.sim$BUGSoutput$DIC
+
+#mcmcChains <- as.mcmc(AFWModel2.sim$BUGSoutput$sims.matrix)
+
+#mean(AFWModel2.sim$BUGSoutput$sims.matrix[,2])
+
+#GoF <- matrix(NA,ncol=length(failures),nrow=length(mcmcChains[,1]))
+#for (i in 1:length(mcmcChains[,1])) {
+#  GoF[i,] <- runif(length(failures),pbinom(failures-1, 68, mcmcChains[i,2]),pbinom(failures, 68,mcmcChains[i,2]))
+#}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+# Calculating the p-values for each posterior model
+#GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+#hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+#mean(GoF_Summary < 0.05)
+
+```
+
+The hierarchical binomial model does not fit the data very well based on a Bayesian χ2 goodness-of-fit test. However, the DIC is still fairly low. Although the DIC really isn't helpful unless we use it compared to another model. So, I created another model and the hierarchical model had a lower DIC. 
+
+
+
+## Question 3
+
+```{r Q3}
+########## Centered Model
+count <- c(0,0,1,3,0,0,4,0,0,2,0,0,0,0,1,0,0,0,1,0)
+total <- c(10,31,56,13,17,43,44,1,7,33,21,1,12,31,22,1,9,19,16,1)
+soak_time <- c(1,1,1,1,1.7,1.7,1.7,1.7,2.2,2.2,2.2,2.2,2.8,2.8,2.8,2.8,4,4,4,4)
+heat_time <- c(7,14,27,51,7,14,27,51,7,14,27,51,7,14,27,51,7,14,27,51)
+prob <- count / total
+# similar to non-parametric procedures from STAT 435, use avgs. and data around a 'non-response'
+# to inform what would have been there
+
+ingot.data <- cbind(soak_time, heat_time, count, total, prob)
+# un-centered model didn't fit well
+
+soak_timec <- soak_time - mean(soak_time)
+heat_timec <- heat_time - mean(heat_time)
+
+CIngotModel <- "model {
+  for(i in 1:20){
+    count[i] ~ dbin(pi[i], total[i])
+    logit(pi[i]) <- beta[1] + beta[2]*soak_timec[i] + beta[3]*heat_timec[i] 
+                        + beta[4]*soak_timec[i]*heat_timec[i] 
+  }
+  beta[1] ~ dnorm(0,1/100)
+  beta[2] ~ dnorm(0,1/100)
+  beta[3] ~ dnorm(0,1/100)
+  beta[4] ~ dnorm(0,1/100)
+  
+}
+"
+
+CIngotModel.sim <- jags(
+  data=c('soak_timec','heat_timec', 'total', 'count'),
+  parameters.to.save=c('beta'),
+  model.file=textConnection(CIngotModel),
+  n.iter=22000,
+  n.burnin=2000,
+  n.chains=5,
+  n.thin=1
+) 
+
+#head(CIngotModel.sim$BUGSoutput$sims.matrix)
+
+b0 <- CIngotModel.sim$BUGSoutput$sims.matrix[,1] # intercept
+b1 <- CIngotModel.sim$BUGSoutput$sims.matrix[,2] # soak time
+b2 <- CIngotModel.sim$BUGSoutput$sims.matrix[,3] # heat time
+b3 <- CIngotModel.sim$BUGSoutput$sims.matrix[,4] # interaction
+
+plot(b0,type="l")
+plot(b1,type="l")
+plot(b2,type="l")
+plot(b3,type="l")
+
+#acf(b0)
+#acf(b1)
+#acf(b2)
+#acf(b3)
+
+effectiveSize(CIngotModel.sim)
+
+gelman.diag(CIngotModel.sim$BUGSoutput)
+CIngotModel.sim$BUGSoutput$DIC
+
+#plot(b0,b1,pch='.')
+#cor(b0,b1)
+#plot(b0,b2,pch='.')
+#cor(b0,b2)
+#plot(b0,b3,pch='.')
+#cor(b0,b3)
+#plot(b1,b2,pch='.')
+#cor(b1,b2)
+#plot(b1,b3,pch='.')
+#cor(b1,b3)
+#plot(b2,b3,pch='.')
+#cor(b2,b3)
+
+#plot(b0,b1,pch='.')
+
+GoF <- matrix(NA,ncol=length(count),nrow=length(b0))
+for (i in 1:length(b0)) {
+  GoF[i,] <- runif(length(count),
+                   pbinom(count-1,1,ilogit(b0[i]+ (b1[i]*soak_timec) + (b2[i]*heat_timec) + (b3[i]*soak_timec*heat_timec))),
+                   pbinom(count,1,ilogit(b0[i]+ (b1[i]*soak_timec) + (b2[i]*heat_timec) + (b3[i]*soak_timec*heat_timec)))
+  )
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+
+# Calculating the p-values for each posterior model
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+#hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+mean(GoF_Summary < 0.05)
+
+
+#beta0 <- rnorm(100000,0,sqrt(1000))
+#beta1 <- rnorm(100000,0,sqrt(1000))
+#beta2 <- rnorm(100000,0,sqrt(1000))
+#beta3 <- rnorm(100000,0,sqrt(1000))
+#plot(beta0,beta1,pch='.',ylim=c(-1,.1),xlim=c(-10,55))
+#par(new=T)
+#plot(b0,b1,pch='.',ylim=c(-10,10),xlim=c(-10,10),col=2,xlab='',ylab='')
+
+#hist(b1)
+mean(b1<0)
+
+#hist(b2)
+#mean(b2<0)
+
+#hist(b3)
+#mean(b3<0)
+
+#hist(b0)
+```
+
+What do you conclude about the impact of these factors on the probability of an ingot not being ready for rolling?
+
+While the model isn't as great as I would have liked, we can see that soak time (centered soak time actually), has the largest impact about the probability of an ingot being ready for rolling. Also, the interaction between the two covariates is impactful as well.
+
+
+
+## Question 4
+
+```{r Q4}
+failures <- c(4,2,1,3,2,0,0)
+demands <- c(16,10,7,13,9,6,2)
+time <- c(1,2,3,4,5,6,7)
+
+HPCIModel <- "model {
+  for(i in 1:7){
+    failures[i] ~ dbin(pi[i], demands[i])
+    logit(pi[i]) <- beta[1] + beta[2]*time[i]
+  }
+  beta[1] ~ dnorm(0,1/100)
+  beta[2] ~ dnorm(0,1/100)
+  
+}
+"
+
+HPCIModel.sim <- jags(
+  data=c('failures', 'demands', 'time'),
+  parameters.to.save=c('beta', 'pi'),
+  model.file=textConnection(HPCIModel),
+  n.iter=22000,
+  n.burnin=2000,
+  n.chains=5,
+  n.thin=1
+) 
+
+#head(HPCIModel.sim$BUGSoutput$sims.matrix)
+
+b0 <- HPCIModel.sim$BUGSoutput$sims.matrix[,1] #intercept
+b1 <- HPCIModel.sim$BUGSoutput$sims.matrix[,2] #slope
+pi1 <- HPCIModel.sim$BUGSoutput$sims.matrix[,2]
+
+plot(b0,type="l")
+plot(b1,type="l")
+
+#acf(b0)
+#acf(b1)
+
+quantile(b0, c(0.025, 0.05, 0.5, 0.095, 0.975))
+quantile(b1, c(0.025, 0.05, 0.5, 0.095, 0.975))
+
+HPCIModel.sim$BUGSoutput$DIC
+
+#Looking at how b0 and b1 are correlated
+#plot(b0,b1,pch='.')
+#cor(b0,b1)
+
+
+GoF <- matrix(NA,ncol=length(failures),nrow=length(b0)) 
+for (i in 1:length(b0)) {
+  GoF[i,] <- runif(length(failures),
+                   pbinom(failures-1,1,ilogit(b0[i]+b1[i]*(time))),
+                   pbinom(failures,1,ilogit(b0[i]+b1[i]*(time)))
+  )
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+# Calculating the p-values for each posterior model
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+#hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+mean(GoF_Summary < 0.05)
+
+
+####################
+HPCIModel <- "model {
+  for(i in 1:7){
+    failures[i] ~ dbin(pi[i], demands[i])
+    logit(pi[i]) <- beta[1] + beta[2]*demands[i]
+  }
+  beta[1] ~ dnorm(0,1/100)
+  beta[2] ~ dnorm(0,1/100)
+  
+}
+"
+
+HPCIModel.sim <- jags(
+  data=c('failures', 'demands'),
+  parameters.to.save=c('beta', 'pi'),
+  model.file=textConnection(HPCIModel),
+  n.iter=22000,
+  n.burnin=2000,
+  n.chains=5,
+  n.thin=1
+) 
+
+#head(HPCIModel.sim$BUGSoutput$sims.matrix)
+
+b0 <- HPCIModel.sim$BUGSoutput$sims.matrix[,1] #intercept
+b1 <- HPCIModel.sim$BUGSoutput$sims.matrix[,2] #slope
+
+plot(b0,type="l")
+plot(b1,type="l")
+
+#acf(b0)
+#acf(b1)
+
+quantile(b0, c(0.025, 0.05, 0.5, 0.095, 0.975))
+quantile(b1, c(0.025, 0.05, 0.5, 0.095, 0.975))
+
+HPCIModel.sim$BUGSoutput$DIC
+
+#Looking at how b0 and b1 are correlated
+#plot(b0,b1,pch='.')
+#cor(b0,b1)
+
+
+GoF <- matrix(NA,ncol=length(failures),nrow=length(b0)) 
+for (i in 1:length(b0)) {
+  GoF[i,] <- runif(length(failures),
+                   pbinom(failures-1,1,ilogit(b0[i]+b1[i]*(demands))),
+                   pbinom(failures,1,ilogit(b0[i]+b1[i]*(demands)))
+  )
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+# Calculating the p-values for each posterior model
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+#hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+mean(GoF_Summary < 0.05)
+
+# Comparing the posterior stucture with the independent priors
+beta0 <- rnorm(100000,0,sqrt(1000))
+beta1 <- rnorm(100000,0,sqrt(1000))
+
+#plot(beta0,beta1,pch='.',ylim=c(-1,1),xlim=c(-30,50))
+#par(new=T)
+#plot(b0,b1,pch='.',ylim=c(-1,1),xlim=c(-30,50),col=2,xlab='',ylab='')
+
+
+
+
+############ Informative Priors
+y <- matrix(c(1,1,2,16), ncol=2)
+solve(y)
+
+pi2 <- rbeta(100000,1.6,1)
+pi16 <- rbeta(100000,1,1.6)
+beta0 <- (1.14285714)*logit(pi2)-(0.14285714)*logit(pi16)
+beta1 <- (0.07142857)*logit(pi16)-(0.07142857)*logit(pi2)
+
+HPCIModel2 <- "model {
+  for(i in 1:7){
+    failures[i] ~ dbin(pi[i], demands[i])
+    logit(pi[i]) <- beta[1] + beta[2]*demands[i]
+  }
+  
+  beta[1] <- (1.14285714)*logit(pi2)-(0.14285714)*logit(pi16)
+  beta[2] <- (0.07142857)*logit(pi16)-(0.07142857)*logit(pi2)
+  pi2 ~ dbeta(1.6,1)
+  pi16 ~ dbeta(1,1.6)
+  
+}
+"
+
+HPCIModel2.sim <- jags(
+  data=c('failures','demands'),
+  parameters.to.save=c('beta'),
+  model.file=textConnection(HPCIModel2),
+  n.iter=102000,
+  n.burnin=2000,
+  n.chains=1,
+  n.thin=10
+)
+
+#head(HPCIModel2.sim$BUGSoutput$sims.matrix)
+
+b0 <- HPCIModel2.sim$BUGSoutput$sims.matrix[,1]
+b1 <- HPCIModel2.sim$BUGSoutput$sims.matrix[,2]
+#plot(b0,b1,pch='.')
+
+plot(b0,type="l")
+plot(b1,type="l")
+
+#acf(b0)
+#acf(b1)
+
+# DIC
+HPCIModel2.sim$BUGSoutput$DIC
+
+quantile(b0, c(0.025, 0.05, 0.5, 0.095, 0.975))
+quantile(b1, c(0.025, 0.05, 0.5, 0.095, 0.975))
+
+#######################
+# Check Model Fit w/ Bayesian Chi-Squared Test
+GoF <- matrix(NA,ncol=length(failures),nrow=length(b0))
+for (i in 1:length(b0)) {
+  GoF[i,] <- runif(length(failures),
+                   pbinom(failures-1,1,ilogit(b0[i]+b1[i]*(demands))),
+                   pbinom(failures,1,ilogit(b0[i]+b1[i]*(demands)))
+  )
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+# Calculating the p-values for each posterior model
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+#hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+mean(GoF_Summary < 0.05)
+
+```
+
+Seeing how the results in Example 7.1 said that the model fit will using the Bayesian χ2 goodness-of-fit test, I would say that the results don't compare well. I find this surprising because in previous classes, the binomial distribution worked about the same, whether data was input in chunks or one at a time. 
+

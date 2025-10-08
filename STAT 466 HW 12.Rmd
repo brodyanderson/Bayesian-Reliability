@@ -1,0 +1,203 @@
+---
+title: "STAT 466 HW 12"
+author: "Brody Anderson"
+date: "2024-04-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(R2jags)
+library(coda)
+library(survival)
+set.seed(9843)
+```
+
+
+## Question 1
+
+Draw a reliability block diagram describing how to successfully perform an everyday task. Include an equation which shows the system CDF comprised of the component CDFs.
+
+
+
+## Question 2
+
+Calculate the hazard function for a series system with n components when each component lifetime has a Weibull distribution. (use Parameterization 1 from Appendix B, with θ = 0)
+
+
+
+## Question 3
+
+Fit a log-linear process to the data in Table 6.2. How does the fit compare with that of a PLP in terms of a Bayesian χ2 goodness-of-fit test? Also compare the log-linear process and PLP fits using DIC discussed in Sect. 4.6.
+
+```{r Q3}
+super.comp <- read.csv('table62.txt', header=TRUE, sep = '', strip.white = TRUE)
+head(super.comp)
+
+cum.fail <- super.comp$Cumulative.Fail
+cum.day <- super.comp$Cumulative.Day
+failures <- super.comp$Failures
+n <- length(failures)
+z <- rep(0,n)
+
+BMSmpLLM.HW <- "model {
+  for(i in 1:(n-1)){
+    cum.fail[i] ~ dpois(lam[i])
+    lam[i] <- -(gam0+gam1*cum.day[i]) + C
+  }
+  cum.fail[n] ~ dpois(lam[n])
+  lam[n] = exp(gam0)*(exp(gam1*cum.day[n])-1)/gam1 + C
+  gam0 ~ dnorm(0,1/10)
+  gam1 ~ dnorm(0,1/10)
+  C = 1000
+}
+"
+
+jags.inits <- list(list(gam0=1,gam1=1),
+                   list(gam0=0,gam1=-1),
+                   list(gam0=-1,gam1=-1))
+
+BMSmpLLM.HW.sim <- jags(
+  data=c('cum.day','cum.fail','n'),
+  parameters.to.save=c('gam0','gam1'),
+  model.file=textConnection(BMSmpLLM.HW),
+  inits=jags.inits,
+  n.iter=32000,
+  n.burnin=2000,
+  n.chains=3,
+  n.thin=1
+)
+
+head(BMSmpLLM.HW.sim$BUGSoutput$sims.matrix)
+length(BMSmpLLM.HW.sim$BUGSoutput$sims.matrix[,1]) #90,000 samples obtained
+
+gam0 <- BMSmpLLM.HW.sim$BUGSoutput$sims.matrix[,2]
+gam1 <- BMSmpLLM.HW.sim$BUGSoutput$sims.matrix[,3]
+
+gelman.diag(BMSmpLLM.HW.sim$BUGSoutput)
+BMSmpLLM.HW.sim$BUGSoutput$DIC
+effectiveSize(BMSmpLLM.HW.sim)
+
+plot(gam0, type='l')
+plot(gam1, type='l')
+
+acf(gam0)
+acf(gam1)
+
+
+mcmcChain <- BMSmpLLM.HW.sim$BUGSoutput$sims.matrix[,3]
+C <- 1000
+
+GoF <- matrix(NA,ncol=length(cum.fail),nrow=length(mcmcChain))
+for (i in 1:length(mcmcChain)) {
+  sim.fail <- numeric(length(cum.fail))
+    for (j in 1:length(cum.fail)) { #exp(gam0)*(exp(gam1*cum.day[n])-1)/gam1 + C
+      sim.fail[j] <- exp(gam0[i])*(exp(gam1[i]*cum.day[j])-1)/gam1[i] + C
+    }
+  GoF[i,] <- ppois(cum.fail,sim.fail)
+  temp <- runif(length(cum.fail),GoF[i,],1)
+  GoF[i,] <- pmax(GoF[i,],temp)
+}
+
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+hist(GoF_Summary,xlim=c(0,1))
+
+mean(GoF_Summary < 0.05)
+
+
+# Power Law Process
+cum.fail <- super.comp$Cumulative.Fail
+cum.day <- super.comp$Cumulative.Day
+failures <- super.comp$Failures
+n <- length(cum.day)
+z <- rep(0,n)
+
+BMSmpPLP <- "model {
+  for (i in 1:(n-1)) {
+    z[i] ~ dpois(lam[i])
+    lam[i] = -log(L[i]) + C
+    L[i] = phi/eta * (cum.fail[i]/eta)^(phi-1)
+  }
+  z[n] ~ dpois(lam[n])
+  lam[n] = L[n]
+  L[n] = (cum.fail[n]/eta)^(phi)
+  eta ~ dexp(1)
+  phi ~ dexp(1)
+  C = 100
+}
+"
+
+BMSmpPLP.sim <- jags(
+  data = c('cum.fail', 'z', 'n'),
+  parameters.to.save = c('eta', 'phi'),
+  model.file = textConnection(BMSmpPLP),
+  n.iter = 32000,
+  n.burnin = 2000,
+  n.chains = 3,
+  n.thin = 1
+)
+
+head(BMSmpPLP.sim$BUGSoutput$sims.matrix)
+length(BMSmpPLP.sim$BUGSoutput$sims.matrix[,1]) #90,000 samples obtained
+
+eta <- BMSmpPLP.sim$BUGSoutput$sims.matrix[,2]
+phi <- BMSmpPLP.sim$BUGSoutput$sims.matrix[,3]
+
+gelman.diag(BMSmpPLP.sim$BUGSoutput)
+BMSmpPLP.sim$BUGSoutput$DIC
+effectiveSize(BMSmpPLP.sim)
+
+plot(eta, type='l')
+plot(phi, type='l')
+
+acf(eta)
+acf(phi)
+
+mcmcChainPLP <- BMSmpPLP.sim$BUGSoutput$sims.matrix[,3]
+
+GoF <- matrix(NA,ncol=length(cum.fail),nrow=length(mcmcChainPLP))
+for (i in 1:length(mcmcChainPLP)) {
+  sim.fail <- numeric(length(cum.fail))
+  for (j in 1:length(cum.fail)) { #phi/eta * (cum.fail[i]/eta)^(phi-1)
+    sim.fail[j] <- (phi[i]/eta[i])*(cum.fail[j]/eta[i])^(phi[i]-1)
+  }
+  GoF[i,] <- ppois(cum.fail,sim.fail)
+  temp <- runif(length(cum.fail),GoF[i,],1)
+  GoF[i,] <- pmax(GoF[i,],temp)
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+#hist(GoF_Summary,xlim=c(0,1))
+
+#mean(GoF_Summary < 0.05)
+# couldn't get this to run properly
+
+```
+
+DIC for the PLP is lower, but the log-linear process GoF is really good. The model fits the data well.  
+
+

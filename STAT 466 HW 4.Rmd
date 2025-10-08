@@ -1,0 +1,96 @@
+---
+title: "STAT 466 HW 4"
+author: "Brody Anderson"
+date: "2024-02-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+## Exercise 2.2 A
+```{r Question 2a}
+get.beta.ab <- function(mu, sigma){
+  s2 <- sigma^2
+  a <- mu*(mu*(1-mu)/s2 - 1)
+  b <- (1-mu)*(mu*(1-mu)/s2 - 1)
+  if (is.nan(a) | is.na(a) | a<=0 |
+      is.nan(b) | is.na(b) | b<=0) {
+    print("New choice for mu and sigma required")
+  } else return(c(round(a,3), round(b,3)))
+}
+
+#mean = 0.5, sigma = 0.1
+prior.parms <- get.beta.ab(0.5, 0.1)
+a <- prior.parms[1]
+b <- prior.parms[2]
+
+```
+Beta(alpha = `r a`, beta = `r b`)
+
+
+## Exercise 2.2 D
+```{r Question 2d}
+uplim <- qbeta(0.975,23,21)
+lowlim <- qbeta(0.025,23,21)
+c(lowlim,uplim)
+
+```
+
+## Exercise 2.2 E
+```{r Question 2e}
+#Plot the log-likelihood function.
+
+theta <- seq(0, 1, length=1001)
+
+loglikelihood <- 11*log(theta) + 9*log(1-theta)
+#loglikelihood <- log(dbinom(11, 20, theta))
+
+plot(theta, loglikelihood, type='l', main='Log-Likelihood Function', xlab=expression(theta),
+ylab='Log Likelihood of Theta')
+
+```
+
+## Exercise 2.2 F
+```{r Question 2f}
+
+theta <- seq(0, 1, length=1001)
+
+plot(theta, dbeta(theta, 12, 12), type='l',
+     main="Prior Density Beta(12,12)", xlab=expression(theta), ylab="density", col='red')
+
+```
+
+
+## Exercise 2.2 G
+```{r Question 2g}
+
+theta <- seq(0, 1, length=1001)
+
+plot(theta, dbeta(theta, 23, 21), type='l',
+     main="Posterior Density Beta(23, 21)", xlab=expression(theta), ylab="density", col='red')
+
+```
+
+## Exercise 2.2 H
+```{r Question 2h}
+
+m1 <- choose(20, 11) * (gamma(1+1) / (gamma(1)*gamma(1))) * ((gamma(1+11)*gamma(1+20-11)) /  gamma(1+1+20)) #beta(1,1) or unif()
+
+m2 <- choose(20, 11) * (gamma(12+12) / (gamma(12)*gamma(12))) * ((gamma(12+11)*gamma(12+20-11)) /  gamma(12+12+20)) #beta(12,12) informed prior
+
+bayes_factor <- m1 / m2
+bayes_factor
+
+bayes_2 <- m2 / m1
+bayes_2
+
+```
+
+
+
+
+
+

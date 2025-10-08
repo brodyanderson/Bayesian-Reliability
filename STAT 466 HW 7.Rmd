@@ -1,0 +1,288 @@
+---
+title: "STAT 466 HW 7"
+author: "Brody Anderson"
+date: "2024-03-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(R2jags)
+library(tidyverse)
+set.seed(1395)
+```
+
+## Question 1
+
+I read pages 85-120 of Chapter 4 from the textbook. 
+
+
+
+## Question 2
+
+(a) Obtain 100,000 draws from the posterior (show histograms of the marginals for λ and β).
+
+```{r Q2A}
+fluid <- c(5.45,16.46,15.70,10.39,6.71,3.77,7.42,6.89,9.45,5.89,7.39,5.61,16.55,
+          12.63,8.18,10.44,6.03,13.96,5.19,10.96, 14.73,6.21,5.69,8.18,4.49,3.71,
+          5.84,10.97,6.81,10.16, 4.34,9.81,4.30,8.91,10.07,5.85,4.95,7.30,4.81,
+          8.44,6.56,9.40,11.29,12.04,1.24,3.45,11.28,6.64,5.74,6.79)
+
+y <- fluid
+#  GoF[i] <- pweib(y[i], v, lambda)
+
+
+Fluid_model <- "model {
+  for (i in 1:50) { y[i] ~ dweib(v, lambda);
+  }
+  
+  v <- a
+  lambda <- (1/b)^a
+  
+  a ~ dgamma(0.1, 0.1)
+  b ~ dunif(0, 10)
+  
+  PPD ~ dweib(v, lambda)
+  
+}"
+
+Fluid.sim <- jags( data = c('y'), parameters.to.save = c('v', 'lambda', 'PPD'), #'GoF' not incl.
+  model.file = textConnection(Fluid_model), 
+  n.iter = 22000,
+  n.burnin=2000, 
+  n.chains=5,
+  n.thin=1
+)
+# 100,000 samples
+# ((252000 - 2000)*4)/10 = 100,000 lambda^(-1/a)
+
+head(Fluid.sim$BUGSoutput$sims.matrix)
+
+lambda <- Fluid.sim$BUGSoutput$sims.matrix[,3]
+v <- Fluid.sim$BUGSoutput$sims.matrix[,4]
+#beta <- (Fluid.sim$BUGSoutput$sims.matrix[,3])^(-(1/Fluid.sim$BUGSoutput$sims.matrix[,4])) #text beta
+
+#Histograms
+hist(lambda) # lambda
+hist(v) # v or beta
+
+```
+
+
+(b) Using the Bayesian χ2 goodness-of-fit test determine if the model is an adequate representation of the data.
+
+```{r Q2B}
+head(Fluid.sim$BUGSoutput$sims.matrix)
+
+chains <- as.mcmc(Fluid.sim$BUGSoutput$sims.matrix)
+a <- as.mcmc(chains[,4])
+b <- as.mcmc((chains[,3])^(-1/a))
+
+
+GoF <- matrix(NA,ncol=length(fluid),nrow=length(chains[,3]))
+for (i in 1:length(chains[,3])) {
+  GoF[i,] <- pweibull(fluid, a[i], b[i])
+}
+
+# Function requires fitted quantiles and returns a p-value
+GoF_Test <- function(fitted_quantiles) {
+  n <- length(fitted_quantiles)
+  K <- round((n)^(0.4))
+  mK <- table(cut(fitted_quantiles,(0:K)/K))
+  np <- n/K
+  RB <- sum(((mK-np)^2)/np)
+  return(1-pchisq(RB,K-1))
+}
+
+# Calculating the p-values for each posterior model
+GoF_Summary <- apply(GoF,1,GoF_Test)
+
+# Histogram of posterior model p-values
+hist(GoF_Summary,xlim=c(0,1))
+
+# Percent of posterior models with p-value less than 0.05
+mean(GoF_Summary < 0.05)
+
+```
+
+The model is not a bad representation of the data. We have a roughly 6-ish% of posterior models with a p-value less than 0.05. We would like to see roughly 5%, but 6% is pretty good. I'd say the model is good.
+
+
+(c) Report a posterior point estimate of the MTTF and also a 95% probability interval.
+
+```{r Q2C}
+fluid.mttf <- b*gamma(1+(1/a))
+fluid.point.estimate <- mean(fluid.mttf)
+fluid.prob.interval <- quantile(fluid.mttf, c(0.025,0.975))
+
+```
+
+With .95 probability, the mean time to failure for lubricating fluid is between `r fluid.prob.interval[1]` and `r fluid.prob.interval[2]` thousands of hours, with our best guess at  `r fluid.point.estimate` thousand hours.
+
+
+(d) What is the posterior probability that the process has an increasing hazard function?
+
+```{r Q2D}
+mean(b > 1)
+#summary(b)
+#hist(b)
+
+```
+
+b is always greater than 1, which means the posterior probability that the process has an increasing hazard function is 1.
+
+
+(e) Using the posterior predictive distribution estimate the probability that a fluid breakdown time
+will be less than 4 thousand hours.
+
+```{r Q2E}
+results <- table(Fluid.sim$BUGSoutput$sims.matrix[,1][Fluid.sim$BUGSoutput$sims.matrix[,1] < 4])
+est <- sum(results) / length(Fluid.sim$BUGSoutput$sims.matrix[,1])
+
+#mean(Fluid.sim$BUGSoutput$sims.matrix[,1] < 4)
+
+```
+
+probability less than 4 thousand hours: `r est`
+
+
+
+## Question 3
+
+Reanalyze the plant 63 EDG demand data in Example 4.1 using a uniform prior distribution for the probability of successful start π. Compare the results with those obtained in Example 4.1 in terms of the point estimate, credible interval, and length of the credible interval.
+
+```{r Q3}
+q <- c(rep(1, 212))
+
+EDG.model <- "model {
+  for(i in 1:212){
+    q[i] ~ dbin(pi, 1); 
+  }
+  pi ~ dbeta(1,1)
+  
+}
+"
+
+EDG.sim <- jags(
+  data=c('q'),
+  parameters.to.save=c('pi'),
+  model.file=textConnection(EDG.model),
+  n.iter=12000,
+  n.burnin=2000,
+  n.chains=2,
+  n.thin=1
+) 
+
+head(EDG.sim$BUGSoutput$sims.matrix)
+mcmcChain <- EDG.sim$BUGSoutput$sims.matrix[,2]
+
+plot(mcmcChain,type="l")
+acf(mcmcChain)
+
+hist(mcmcChain,br=30)
+
+EDG.sim$BUGSoutput$DIC
+
+#summary(mcmcChain)
+
+my.point <- mean(mcmcChain)
+
+#95% Credible Interval 
+my.cred <- quantile(mcmcChain,c(0.025,0.975))  
+
+my.len <- my.len <- my.cred[2] - my.cred[1]
+
+
+
+#prior beta(1,1)
+#posterior beta(1+212, 1+212-212)
+
+#pi <- seq(0,1,length=1001)
+#plot(pi, dbeta(213, 1))
+
+# Their analysis: Posterior Beta(239.3, 0.5) 
+# Our analysis: Posterior Beta(213, 1)
+
+#pi <- seq(0, 1, length = 1001)
+#plot(pi, dbeta(pi, 213, 1), type = "l", xlab = expression(pi), ylab = "Density", 
+#     main = "Beta Posterior")
+
+text.point <- 239.3 / (239.3 + 0.5)
+#my.point <- 213 / (213+1)
+  
+text.cred <- qbeta(c(0.025, 0.975), 239.3, 0.5)
+#my.cred <- qbeta(c(0.025, 0.975), 213, 1)
+  
+text.len <- text.cred[2] - text.cred[1]
+#my.len <- my.cred[2] - my.cred[1]
+
+```
+
+Using the uniform prior, our point estimate is closer to what the data is, meaning it is closer to one.
+
+Textbook point estimate: `r text.point`
+
+My point estimate: `r my.point`
+
+Textbook point estimate: `r text.cred`
+
+My point estimate: `r my.cred`
+
+Textbook length: `r text.len`
+
+My length: `r my.len`
+
+From these results, we also see that the uniform prior leads to a larger credible interval. 
+
+
+
+## Question 4
+
+Tetrahedron Inc. (1996) presents success/failure data for tests on blowout prevention (BOP) systems, which prevent uncontrolled releases of reservoir fluids in the drilling of oil and gas fields. A test is a success if no piece of equipment in the BOP system needs repair. The initial experiment consisted of 44 unused BOP systems tested with 17 successes. Estimate the initial BOP system reliability and provide a credible interval.
+
+```{r Q4}
+gas.data <- c(rep(1, 17), rep(0, 27))
+
+Gas.model <- "model {
+  for(i in 1:44){
+    gas.data[i] ~ dbin(pi, 1); 
+  }
+  pi ~ dbeta(1,1)
+  
+}
+"
+
+Gas.sim <- jags(
+  data=c('gas.data'),
+  parameters.to.save=c('pi'),
+  model.file=textConnection(Gas.model),
+  n.iter=12000,
+  n.burnin=2000,
+  n.chains=2,
+  n.thin=1
+) 
+
+head(Gas.sim$BUGSoutput$sims.matrix)
+gas.chain <- Gas.sim$BUGSoutput$sims.matrix[,2]
+
+plot(gas.chain,type="l")
+acf(gas.chain)
+
+hist(gas.chain,br=30)
+
+Gas.sim$BUGSoutput$DIC
+
+#summary(gas.chain)
+
+gas.point <- mean(gas.chain)
+
+#95% Credible Interval 
+gas.cred <- quantile(gas.chain,c(0.025,0.975)) 
+
+```
+
+point estimate: `r gas.point`
+
+95% credible interval: (`r gas.cred[1]`, `r gas.cred[2]`)
+
+

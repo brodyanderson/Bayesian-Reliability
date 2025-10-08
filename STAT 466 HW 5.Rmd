@@ -1,0 +1,144 @@
+---
+title: "STAT 466 HW 5"
+author: "Brody Anderson"
+date: "2024-02-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Question 2 (a)
+
+```{r Gamma Prior}
+data <- c(5.45,16.46,15.70,10.39,6.71,3.77,7.42,6.89,9.45,5.89,7.39,5.61,16.55,
+          12.63,8.18,10.44,6.03,13.96,5.19,10.96, 14.73,6.21,5.69,8.18,4.49,3.71,
+          5.84,10.97,6.81,10.16, 4.34,9.81,4.30,8.91,10.07,5.85,4.95,7.30,4.81,
+          8.44,6.56,9.40,11.29,12.04,1.24,3.45,11.28,6.64,5.74,6.79)
+
+a <- 15; pgamma(5/7,a*5,a*8.85)-pgamma(5/11,a*5,a*8.85)
+#gamma(x, 75, 132.75)
+
+```
+Prior: Gamma(75, 132.75)
+
+## Question 2 (b)
+
+```{r next}
+# Posterior of lambda is gamma(325, 537.82)
+
+expected_lambda <- 325 / 537.82
+
+```
+
+E[lambda | y] = `r expected_lambda`
+
+
+## Question 2 (c)
+
+```{r 2c}
+cred_int1 <- c(qgamma(0.005, 325, 537.82), qgamma(0.995, 325, 537.82))
+
+```
+
+With 99% probability, the mean failure rate of fluid breakdown times is between `r cred_int1[1]` and `r cred_int1[2]`.
+
+
+## Question 2 (d)
+
+```{r 2d}
+curve(dgamma(5/x,325,537.82)*5/x^2,xlim=c(5,12))
+
+mean_mttf <- integrate(function(x) x * dgamma(5/x,325,537.82)*5/x^2, lower = 5, upper = Inf)$value
+
+```
+E[MTTF | y] =   `r mean_mttf`
+
+
+## Question 2 (e)
+
+```{r 2e}
+cred_int2 <- c(5/qgamma(0.995,290,477.07), 5/qgamma(0.005,290,477.07))
+
+```
+
+With 99% probability, the mean time to failure for this fluid is between `r cred_int1[1]` and `r cred_int1[2]` thousands of hours.
+
+
+## Question 2 (f)
+
+```{r 2f}
+dgamma_custom <- function(x) {
+  dgamma(5/x, 325, 537.82) * 5/x^2
+}
+
+greater_7.5 <- integrate(dgamma_custom, 7.5, Inf)$value
+
+```
+
+The probability that the MTTF of the lubricant is greater than the minimum threshold of 7,500 hours is `r greater_7.5`.
+
+
+## Question 4 (a)
+
+```{r 2b}
+a <- 22; pgamma(2.5/4,a*2.5,a*5)-pgamma(2.5/7,a*2.5,a*5)
+curve(dgamma(x,55,110),xlim=c(0,1.5)); abline(v=2.5/4); abline(v=2.5/7)
+
+```
+
+Prior Distribution: Gamma(a=55, b=110)
+
+
+## Question 4 (b)
+
+```{r 4b}
+battery_data <- c(7.87, 10.66, 8.67, 7.74, 7.80, 8.13, 7.41, 8.61, 8.11, 9.05, 8.53, 8.33, 9.63, 9.67, 6.61, 5.81, 9.34, 9.02, 9.97, 8.68)
+
+```
+
+
+## Question 4 (c)
+
+```{r 4c}
+# Posterior of lambda is Gamma(70, 279.64)
+
+expected_lambda2 <- 70 / 279.64
+
+```
+
+E[lambda | y] = `r expected_lambda2`
+
+
+## Question 4 (d)
+
+```{r 4d}
+cred_int2 <- c(qgamma(0.005, 70, 279.64), qgamma(0.995, 70, 279.64))
+
+```
+
+With 99% probability, that the mean failure rate of battery breakdown times is between `r cred_int2[1]` and `r cred_int2[2]`.
+
+
+## Question 4 (e)
+
+```{r 4e}
+curve(dgamma(2.5/x,70,279.64)*2.5/x^2,xlim=c(5,15))
+
+mean_mttf2 <- integrate(function(x) x * dgamma(2.5/x,70,279.64)*2.5/x^2, lower = 2.5, upper = Inf)$value
+
+```
+E[MTTF | y] =   `r mean_mttf2`
+
+
+## Question 4 (f)
+
+```{r 4f}
+last_int <- c(2.5/qgamma(0.995,70,279.64),2.5/qgamma(0.005,70,279.64))
+
+```
+
+With 99% probability, the mean time to failure for headlamp batteries is between `r last_int[1]` and `r last_int[2]` hours.
+

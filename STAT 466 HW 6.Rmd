@@ -1,0 +1,206 @@
+---
+title: "STAT 466 HW 6"
+author: "Brody Anderson"
+date: "2024-02-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(R2jags)
+set.seed(1234)
+```
+
+## Question 1
+
+I read all of Chapter 3.
+
+
+
+## Question 2
+
+```{r Q2}
+fails <- c(5.45,16.46,15.70,10.39,6.71,3.77,7.42,6.89)
+
+Exp_model <- "model {
+for(i in 1:8){ fails[i] ~ dexp(lambda); }
+lambda ~ dgamma(10,90)
+} "
+
+Sim1 <- jags( data=c('fails'), parameters.to.save=c('lambda'),
+model.file=textConnection(Exp_model), n.iter=4000, n.burnin=200,
+n.chains=1, n.thin=2)
+mean(Sim1$BUGSoutput$sims.matrix[,2])
+
+```
+
+
+
+## Question 3
+
+# A
+Use the change of variables technique to calculate the probability density function, mean, and variance of Y.
+
+# B
+Draw a random sample X1,...,X10,000 from a Normal(0,1) distribution. Set Yi = exp(Xi). Draw a histogram of the Yi and overlay a plot of the probability density function of Y.
+
+```{r Q3B}
+# B
+x <- rnorm(10000, mean=0, sd=1)
+y <- exp(x)
+
+myfunction <- function(y) {
+  
+  (1/(sqrt(2*pi)*y) * exp(-(1/2)*(log(y))^2))
+  
+}
+
+data <- data.frame(y)
+
+ggplot(data, aes(x = y)) +
+  geom_histogram(aes(y = ..density..), binwidth = .7, color = 'black') +
+  stat_function(fun = myfunction, color = 'firebrick', size = 1) +
+  labs(title = 'Histogram & Probability Density Function of Y', x = 'Y', y = 'Probability Density')
+
+```
+
+# C
+Estimate the probability density function, mean, and variance of Y using the random sample.
+
+``` {r Q3C}
+summary <- summary(y)
+meany <- mean(y)
+vary <- var(y)
+
+```
+Estimated Probability Density Function (Summary): `r summary`
+
+Mean of Y = `r meany`
+
+Variance of Y = `r vary`
+
+
+
+## Question 4 
+Assume a machine has lognormal repair times with parameters 3 and 1, respectively (i.e., r-code for
+the pdf at x is dlnorm(x,3,1) measured in hours). Write out each problem mathematically, identify the
+h and f functions, and then report an estimate of the requested value(s) via Monte Carlo integration.
+
+``` {r Q4}
+J <- 10000
+
+# A
+sample <- rlnorm(J, meanlog=3, sdlog=1) 
+
+ggplot(data.frame(sample), aes(x = sample)) +
+  geom_histogram(bins = 30, color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Sample",
+       x = "Repair Times (hours)", y = "Frequency") +
+  xlim(0, 300)
+
+q4mean <- mean(sample)
+
+# B
+mean_log_repair <- mean(log(sample))
+
+# C
+gfunc <- function(x) as.numeric(x > 5)
+gvals <- gfunc(sample)
+over_5_hours <- mean(gvals)
+
+# D 
+ninety_complete <- quantile(sample, .9)
+
+```
+
+(a) What is the average machine repair time? `r q4mean` hours
+(b) What is the expected value of the log repair time? `r mean_log_repair` 
+(c) What is the probability that a repair will take longer than 5 hours? `r over_5_hours`
+(d) What is the time at which 90% of the repairs should be completed? `r ninety_complete` hours
+
+
+
+## Question 5
+From the previous problem report 99% confidence intervals for your Monte Carlo estimates from parts a and b.
+
+```{r Q5}
+# A
+conf_inta <- quantile(sample,c(0.005, 0.995))
+
+# B
+conf_intb <- quantile(log(sample),c(0.005, 0.995))
+
+```
+
+# A
+We are 99% confident that the average machine repair time is between `r conf_inta[1]` and `r conf_inta[2]` hours.
+
+# B
+We are 99% confident that the expected value of the log repair time is between `r conf_intb[1]` and `r conf_intb[2]`.
+
+
+
+## Question 6
+Approximately how many Monte Carlo samples would you need for your 99% confidence interval (from part a of the previous problem) to be no wider than 10 minutes?
+
+```{r Q6}
+moe <- (10/60)/2
+n <- ( (qnorm(0.995)*sd(sample)) / moe)^2
+
+```
+`r ceiling(n)`
+
+
+## Question 7
+Section 3.6 Exercise 3.2 (Use JAGS for the MCMC algorithm)
+
+Suppose we perform an experiment where the data have a Poisson(λ) sampling density. 
+We describe our uncertainty about λ using a Gamma prior density with parameters α and β. 
+We also describe our uncertainty about α and β using independent Gamma prior densities.
+
+```{r Q7}
+# A 
+y <- rpois(50, lambda=5)
+
+# B 
+#Choose diffuse prior densities: alpha ~ dgamma(.1,.1) & beta ~ dgamma(.1,.1)
+
+# C
+library(R2jags)
+Poisson_model <- "model {
+  for (i in 1:50) { y[i] ~ dpois(lambda); }
+  
+  lambda ~ dgamma(alpha, beta)
+  alpha ~ dgamma(.1, .1)
+  beta ~ dgamma(.1, .1)
+
+}"
+
+Sim2 <- jags( data=c('y'), parameters.to.save=c('lambda'),
+model.file=textConnection(Poisson_model))
+
+# D
+post_cred_int <- quantile(Sim2$BUGSoutput$sims.matrix[,2],c(0.05,0.95))
+
+```
+
+# A & C in R code above
+  a) Simulate 50 observations from a Poisson distribution with parameter λ = 5.
+
+  c) Implement an MCMC algorithm to calculate posterior densities for λ,α, and β.
+
+
+# B
+Choose diffuse prior densities for α and β.
+
+alpha ~ dgamma(.1,.1)
+
+beta ~ dgamma(.1,.1)
+
+
+# D
+Is λ = 5 contained in a 90% posterior credible interval for λ?
+
+Yes, λ = 5 is contained in a 90% posterior credible interval for λ: `r post_cred_int`
+

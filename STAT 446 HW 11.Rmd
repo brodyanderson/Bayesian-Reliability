@@ -1,0 +1,52 @@
+---
+title: "STAT 466 HW 11"
+author: "Brody Anderson"
+date: "2024-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(R2jags)
+library(survival)
+set.seed(1234)
+```
+
+
+## Question 1
+
+Similar to the experiment in Example 4.8, Ku et al. (1972) reports on an experiment with a different lubricant called O-67-22. Table 7.31 presents the resulting lifetimes. Is σ2 for O-67-22 similar to that found in Exam- ple 4.8? Is μ for this lubricant different from that for the other lubricant? Also fit the data from both experiments in one model using an appropriate covariate and assuming a common σ2 for the two lubricants. Based on the combined analysis, is one lubricant better than the other?
+
+
+```{r Q1}
+# Table 4.5 for lubricant O-64-2
+# Table 7.31 for lubricant O-67-22
+
+
+```
+
+
+
+## Question 2
+
+```{r Q2}
+
+```
+
+
+
+## Question 3
+
+7.22 The inverse power or simply power relationship is another model relating lifetime to an accelerating stress, such as elevated voltage. For a positive stress variable V , the nominal lifetime takes the form A/V γ1 . For Weibull lifetimes, we can express the characteristic life ψ (third parameterization of the Weibull distribution in Appendix B) as log(ψ) = γ0 +γ1[− log(V )].
+
+The data displayed in Table 7.42 from Nelson (1990) are breakdown times of an insulating fluid at seven high voltages.
+
+(a) Analyze the lifetime data using the Weibull power relationship model.
+(b) Predict the mean lifetime and lifetime distribution at 20 kV.
+
+```{r Q3}
+
+```
+
+
